@@ -1,5 +1,19 @@
 const statusEl = document.getElementById('status');
 const lastEl = document.getElementById('last');
+const notifyToggle = document.getElementById('notify-toggle');
+
+chrome.runtime.sendMessage({ type: 'get-settings' }, (resp) => {
+  if (resp && resp.ok && resp.settings) {
+    notifyToggle.checked = resp.settings.notifyEnabled !== false;
+  }
+});
+
+notifyToggle.addEventListener('change', () => {
+  chrome.runtime.sendMessage({
+    type: 'set-settings',
+    notifyEnabled: notifyToggle.checked,
+  });
+});
 
 function render(result) {
   const s = result.status;

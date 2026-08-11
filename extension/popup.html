@@ -48,12 +48,22 @@
       background: #e5e7eb;
       color: #1f2937;
     }
+    label.toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      font-size: 12px;
+      color: #374151;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <h1>Anikura CN 自动签到</h1>
   <p id="status">读取状态中…</p>
   <p id="last"></p>
+  <label class="toggle"><input type="checkbox" id="notify-toggle" /> 启用签到结果通知</label>
   <button id="checkin">立即签到</button>
   <button id="open" class="secondary">打开签到页</button>
   <script src="popup.js"></script>

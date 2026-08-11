@@ -9,6 +9,8 @@ const SITE_URL = 'https://www.anikura.cn/';
 
 const ALARM_NAME = 'anikura-daily';
 const STATUS_KEY = 'anikura_status';
+const SETTINGS_KEY = 'anikura_settings';
+const LAST_NOTIFY_KEY = 'anikura_last_notify';
 
 // ---------- 基础工具 ----------
 
@@ -125,6 +127,30 @@ function notify(title, message) {
   });
 }
 
+async function getSettings() {
+  const d = await storageGet(SETTINGS_KEY);
+  const s = d[SETTINGS_KEY] || {};
+  return { notifyEnabled: s.notifyEnabled !== false };
+}
+
+// 每种结果（成功/失败）每天最多提示一次，避免每小时闹铃重复打扰
+async function notifyOnce(type, title, message) {
+  const settings = await getSettings();
+  if (!settings.notifyEnabled) return;
+  const today = shanghaiToday();
+  const d = (await storageGet(LAST_NOTIFY_KEY))[LAST_NOTIFY_KEY];
+  if (d && d.date === today && d.type === type) return;
+  notify(title, message);
+  await storageSet({ [LAST_NOTIFY_KEY]: { date: today, type } });
+}
+
+// 点击通知跳转到签到页
+chrome.notifications.onClicked.addListener((id) => {
+  if (id === 'anikura-checkin') {
+    chrome.tabs.create({ url: SITE_URL + 'checkin' });
+  }
+});
+
 async function saveStatus(status) {
   await storageSet({ [STATUS_KEY]: { ...status, updatedAt: Date.now() } });
 }
@@ -141,6 +167,7 @@ async function checkInNow(force = false) {
   let session = await readSession();
   if (!session) {
     await saveStatus({ ok: false, reason: 'not_logged_in', today });
+    await notifyOnce('fail', 'Anikura CN 签到未完成', '未检测到登录状态，请先打开 anikura.cn 登录一次');
     return { ok: false, reason: 'not_logged_in', today };
   }
 
@@ -150,7 +177,7 @@ async function checkInNow(force = false) {
     const already = !!(data && data.already);
     await saveStatus({ ok: true, already, points, streak, today });
     if (!already) {
-      notify('Anikura CN 签到成功', '获得 ' + points + ' 积分，连续签到 ' + streak + ' 天');
+      await notifyOnce('success', 'Anikura CN 签到成功', '获得 ' + points + ' 积分，连续签到 ' + streak + ' 天');
     }
     return { ok: true, already, points, streak, today };
   };
@@ -165,10 +192,12 @@ async function checkInNow(force = false) {
         return await finishSuccess(await callCheckIn(fresh.access_token));
       } catch (e2) {
         await saveStatus({ ok: false, reason: 'auth_refresh_failed', error: String((e2 && e2.message) || e2), today });
+        await notifyOnce('fail', 'Anikura CN 签到失败', '登录态已过期且刷新失败，请重新登录 anikura.cn');
         return { ok: false, reason: 'auth_refresh_failed', error: String((e2 && e2.message) || e2), today };
       }
     }
     await saveStatus({ ok: false, reason: 'rpc_error', error: String((err && err.message) || err), today });
+    await notifyOnce('fail', 'Anikura CN 签到失败', String((err && err.message) || err));
     return { ok: false, reason: 'rpc_error', error: String((err && err.message) || err), today };
   }
 }
@@ -202,6 +231,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg && msg.type === 'get-status') {
     storageGet(STATUS_KEY).then((d) => sendResponse({ ok: true, status: d[STATUS_KEY] || null }));
+    return true;
+  }
+  if (msg && msg.type === 'get-settings') {
+    getSettings().then((s) => sendResponse({ ok: true, settings: s }));
+    return true;
+  }
+  if (msg && msg.type === 'set-settings') {
+    const next = { notifyEnabled: !!msg.notifyEnabled };
+    storageSet({ [SETTINGS_KEY]: next }).then(() => sendResponse({ ok: true, settings: next }));
     return true;
   }
 });
