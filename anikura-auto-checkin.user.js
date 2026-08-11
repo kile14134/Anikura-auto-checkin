@@ -180,6 +180,30 @@
     return false;
   }
 
+  // 兜底 2：读不到登录态时，直接在签到页点“立即签到”（登录态由网站自己管理）
+  async function tryPageButtonCheckIn() {
+    if (location.pathname !== '/checkin' || !document.body) return false;
+    if (/今日已签到/.test(document.body.innerText)) {
+      showToast('今天已经签到过啦', 'info');
+      return true;
+    }
+    const btn = Array.from(document.querySelectorAll('button')).find((b) =>
+      /立即签到/.test(b.textContent || '')
+    );
+    if (!btn) return false;
+    btn.click();
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      await sleep(600);
+      if (/今日已签到/.test(document.body.innerText)) {
+        showToast('签到成功（通过页面按钮完成）', 'success');
+        return true;
+      }
+    }
+    showToast('已点击签到，但未检测到结果，请查看页面状态', 'warn');
+    return true;
+  }
+
   let running = false;
   async function runCheckIn(force = false) {
     if (running) return;
@@ -190,6 +214,7 @@
 
       let token = await waitForToken();
       if (!token) {
+        if (await tryPageButtonCheckIn()) return;
         showToast('未检测到登录状态：请先登录 anikura.cn。若已登录仍提示，登录 cookie 可能被设为 HttpOnly，建议改用 Chrome 插件版', 'warn');
         return;
       }

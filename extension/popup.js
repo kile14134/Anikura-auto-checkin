@@ -56,7 +56,9 @@ function render(result) {
     if (s.already) {
       statusEl.textContent = '今天已签到 · 连续 ' + (s.streak ?? '-') + ' 天';
     } else {
-      statusEl.textContent = '签到成功 +' + s.points + ' 积分 · 连续 ' + (s.streak ?? '-') + ' 天';
+      statusEl.textContent =
+        '签到成功' + (s.points != null ? ' +' + s.points + ' 积分' : '（页面完成）') +
+        ' · 连续 ' + (s.streak ?? '-') + ' 天';
     }
     statusEl.className = 'ok';
   } else if (s.reason === 'not_logged_in') {
@@ -83,7 +85,9 @@ document.getElementById('checkin').addEventListener('click', () => {
         statusEl.textContent = '今天已签到 · 连续 ' + (r.streak ?? '-') + ' 天';
         statusEl.className = 'ok';
       } else if (r.ok) {
-        statusEl.textContent = '签到成功 +' + r.points + ' 积分 · 连续 ' + (r.streak ?? '-') + ' 天';
+        statusEl.textContent =
+          '签到成功' + (r.points != null ? ' +' + r.points + ' 积分' : '（页面完成）') +
+          ' · 连续 ' + (r.streak ?? '-') + ' 天';
         statusEl.className = 'ok';
       } else if (r.reason === 'not_logged_in') {
         statusEl.textContent = '未检测到登录状态：请先在 anikura.cn 登录一次';

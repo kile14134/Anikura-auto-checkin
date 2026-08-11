@@ -76,6 +76,43 @@ function tokenFromPageCookies() {
   return session ? session.access_token : null;
 }
 
+// ---------- 页面按钮签到（兜底，不依赖读取登录态） ----------
+
+function isAlreadyCheckedIn() {
+  return !!document.body && /今日已签到/.test(document.body.innerText);
+}
+
+function findCheckInButton() {
+  return Array.from(document.querySelectorAll('button')).find((b) =>
+    /立即签到/.test((b.textContent || '').trim())
+  );
+}
+
+function clickBasedCheckIn() {
+  return new Promise((resolve) => {
+    if (isAlreadyCheckedIn()) {
+      resolve({ ok: true, already: true });
+      return;
+    }
+    const btn = findCheckInButton();
+    if (!btn) {
+      resolve({ ok: false, error: '未找到签到按钮（可能未登录或页面未加载完）' });
+      return;
+    }
+    btn.click();
+    const deadline = Date.now() + 10000;
+    const timer = setInterval(() => {
+      if (isAlreadyCheckedIn()) {
+        clearInterval(timer);
+        resolve({ ok: true, already: false });
+      } else if (Date.now() > deadline) {
+        clearInterval(timer);
+        resolve({ ok: false, error: '点击后未检测到签到成功（可能已签到或网络异常）' });
+      }
+    }, 600);
+  });
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'anikura-get-page-session') {
     const result = { lsKeys: getLsKeys(), pageCookies: getPageCookieNames(), token: null };
@@ -90,5 +127,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (!result.token) result.token = tokenFromPageCookies();
     sendResponse(result);
+  }
+  if (msg && msg.type === 'anikura-click-checkin') {
+    clickBasedCheckIn().then((r) => sendResponse(r));
+    return true;
   }
 });

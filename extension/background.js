@@ -130,6 +130,66 @@ function askContentScript() {
   });
 }
 
+function findAnikuraTabs() {
+  return new Promise((resolve) => {
+    chrome.tabs.query({ url: ['https://www.anikura.cn/*', 'https://anikura.cn/*'] }, (tabs) => {
+      resolve(tabs || []);
+    });
+  });
+}
+
+function sendToTab(tabId, type) {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, { type }, (resp) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+          return;
+        }
+        resolve(resp);
+      });
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
+// 页面按钮签到兜底：优先复用已打开的 anikura 页面，没有则短暂开一个后台标签页完成签到后关闭
+async function performClickCheckIn() {
+  const tabs = await findAnikuraTabs();
+  for (const tab of tabs) {
+    const r = await sendToTab(tab.id, 'anikura-click-checkin');
+    if (r && r.ok) return { ok: true, already: !!r.already };
+  }
+
+  const tab = await new Promise((resolve) => {
+    try {
+      chrome.tabs.create({ url: SITE_URL + 'checkin', active: false }, (t) => {
+        if (chrome.runtime.lastError || !t) {
+          resolve(null);
+          return;
+        }
+        chrome.tabs.update(t.id, { muted: true });
+        resolve(t);
+      });
+    } catch (e) {
+      resolve(null);
+    }
+  });
+  if (!tab) return { ok: false, error: '无法打开签到页' };
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await sleep(3000);
+      const r = await sendToTab(tab.id, 'anikura-click-checkin');
+      if (r && r.ok) return { ok: true, already: !!r.already };
+      if (r && r.error && !/未找到签到按钮/.test(r.error)) return { ok: false, error: r.error };
+    }
+    return { ok: false, error: '签到页加载后仍未找到签到按钮（可能未登录）' };
+  } finally {
+    chrome.tabs.remove(tab.id);
+  }
+}
+
 async function collectSessionData() {
   const diag = { cookieProbes: [], lsKeys: [], pageCookies: [], parseError: null };
   let session = null;
@@ -286,7 +346,30 @@ async function checkInNow(force = false) {
 
   let session = await readSession();
   if (!session) {
-    await saveStatus({ ok: false, reason: 'not_logged_in', today, diag: lastDiag });
+    // 兜底：通过页面自身的“立即签到”按钮完成（每天最多开一次后台标签页）
+    const attemptKey = 'anikura_click_attempt';
+    const lastAttempt = (await storageGet(attemptKey))[attemptKey];
+    if (!force && lastAttempt === today) {
+      await saveStatus({ ok: false, reason: 'not_logged_in', today, diag: lastDiag });
+      return { ok: false, reason: 'not_logged_in', today };
+    }
+    await storageSet({ [attemptKey]: today });
+    const clicked = await performClickCheckIn();
+    if (clicked.ok) {
+      await saveStatus({
+        ok: true,
+        already: !!clicked.already,
+        points: null,
+        streak: null,
+        today,
+        viaClick: true,
+      });
+      if (!clicked.already) {
+        await notifyOnce('success', 'Anikura CN 签到成功', '已在签到页完成签到');
+      }
+      return { ok: true, already: !!clicked.already, today, viaClick: true };
+    }
+    await saveStatus({ ok: false, reason: 'not_logged_in', today, diag: lastDiag, clickError: clicked.error });
     await notifyOnce('fail', 'Anikura CN 签到未完成', '未检测到登录状态，请先打开 anikura.cn 登录一次');
     return { ok: false, reason: 'not_logged_in', today };
   }
