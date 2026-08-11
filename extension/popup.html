@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      width: 260px;
+      margin: 0;
+      padding: 14px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      color: #1f2937;
+      background: #fff;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    #status {
+      margin: 0 0 12px;
+      padding: 10px;
+      border-radius: 8px;
+      background: #f3f4f6;
+      line-height: 1.5;
+    }
+    #status.ok { background: #ecfdf5; color: #047857; }
+    #status.warn { background: #fffbeb; color: #b45309; }
+    #status.err { background: #fef2f2; color: #b91c1c; }
+    #last {
+      margin: 0 0 12px;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    button {
+      width: 100%;
+      padding: 8px 0;
+      margin-bottom: 6px;
+      border: none;
+      border-radius: 8px;
+      background: #7c3aed;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.9; }
+    button.secondary {
+      background: #e5e7eb;
+      color: #1f2937;
+    }
+  </style>
+</head>
+<body>
+  <h1>Anikura CN 自动签到</h1>
+  <p id="status">读取状态中…</p>
+  <p id="last"></p>
+  <button id="checkin">立即签到</button>
+  <button id="open" class="secondary">打开签到页</button>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Anikura CN 自动签到",
+  "version": "1.0.0",
+  "description": "Chrome 运行时每天自动完成 anikura.cn 每日签到（需先手动登录过网站一次）",
+  "permissions": ["alarms", "cookies", "notifications", "storage"],
+  "host_permissions": [
+    "https://www.anikura.cn/*",
+    "https://ktpmvwcfzauqzkqnneus.supabase.co/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Anikura CN 自动签到",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "128": "icon128.png"
+  }
+}
