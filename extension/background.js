@@ -26,6 +26,18 @@ function storageSet(obj) {
   return new Promise((resolve) => chrome.storage.local.set(obj, resolve));
 }
 
+function getAllCookies(details) {
+  return new Promise((resolve) => {
+    chrome.cookies.getAll(details, (cookies) => {
+      if (chrome.runtime.lastError) {
+        resolve([]);
+        return;
+      }
+      resolve(cookies || []);
+    });
+  });
+}
+
 function shanghaiToday() {
   return new Date().toLocaleDateString('en-CA', {
     timeZone: 'Asia/Shanghai',
@@ -44,15 +56,17 @@ function base64UrlDecode(str) {
   return new TextDecoder().decode(bytes);
 }
 
-// 读取 anikura.cn 的登录 cookie（Supabase session，base64url 编码，可能分片）
-async function readSession() {
-  const cookies = await chrome.cookies.getAll({ url: SITE_URL });
+// 读取 anikura.cn 的登录态（Supabase session）
+// 顺序：chrome.cookies（含 HttpOnly，兼容 www 与裸域名）→ 页面 content script（localStorage / document.cookie）
+let lastDiag = null;
+
+function sessionFromCookies(cookies) {
   const related = cookies.filter(
     (c) =>
       (c.name === COOKIE_PREFIX || c.name.startsWith(COOKIE_PREFIX + '.')) &&
       !c.name.includes('code-verifier')
   );
-  if (!related.length) return null;
+  if (!related.length) return { session: null, cookieNames: [] };
 
   const chunked = related.filter((c) => c.name.includes('.'));
   const list = chunked.length
@@ -66,11 +80,83 @@ async function readSession() {
   let raw = list.map((c) => c.value).join('');
   if (raw.startsWith('base64-')) raw = raw.slice('base64-'.length);
   try {
-    return JSON.parse(base64UrlDecode(raw));
+    const session = JSON.parse(base64UrlDecode(raw));
+    return {
+      session: session && session.access_token ? session : null,
+      cookieNames: related.map((c) => c.name),
+    };
   } catch (e) {
     console.warn('[Anikura Auto Check-in] 解析登录态失败', e);
-    return null;
+    return {
+      session: null,
+      cookieNames: related.map((c) => c.name),
+      parseError: String((e && e.message) || e),
+    };
   }
+}
+
+function askContentScript() {
+  return new Promise((resolve) => {
+    chrome.tabs.query({ url: ['https://www.anikura.cn/*', 'https://anikura.cn/*'] }, (tabs) => {
+      const targets = tabs || [];
+      if (!targets.length) {
+        resolve(null);
+        return;
+      }
+      let pending = targets.length;
+      let found = null;
+      for (const tab of targets) {
+        try {
+          chrome.tabs.sendMessage(tab.id, { type: 'anikura-get-page-session' }, (resp) => {
+            if (!chrome.runtime.lastError && !found && resp && resp.token) found = resp;
+            pending--;
+            if (pending === 0) resolve(found);
+          });
+        } catch (e) {
+          pending--;
+          if (pending === 0) resolve(found);
+        }
+      }
+    });
+  });
+}
+
+async function collectSessionData() {
+  const diag = { cookieNames: [], lsKeys: [], pageCookies: [], parseError: null };
+  let session = null;
+
+  // 1) chrome.cookies：能读到 HttpOnly，覆盖 www 与裸域名
+  const allCookies = [];
+  for (const url of [SITE_URL, 'https://anikura.cn/']) {
+    allCookies.push(...(await getAllCookies({ url })));
+  }
+  diag.cookieNames = allCookies
+    .filter((c) => c.name.startsWith('sb-') && c.name.includes('auth-token') && !c.name.includes('code-verifier'))
+    .map((c) => c.name + (c.httpOnly ? ' (HttpOnly)' : ''));
+  const fromCookie = sessionFromCookies(allCookies);
+  diag.parseError = fromCookie.parseError || null;
+  if (fromCookie.session) session = fromCookie.session;
+
+  // 2) 页面 content script：localStorage / document.cookie 兜底
+  if (!session) {
+    try {
+      const page = await askContentScript();
+      if (page) {
+        diag.lsKeys = page.lsKeys || [];
+        diag.pageCookies = page.pageCookies || [];
+        if (page.token) session = { access_token: page.token };
+      }
+    } catch (e) {
+      diag.contentScriptError = String((e && e.message) || e);
+    }
+  }
+  return { session, diag };
+}
+
+async function readSession() {
+  const result = await collectSessionData();
+  lastDiag = result.diag;
+  return result.session;
 }
 
 async function callCheckIn(accessToken) {
@@ -166,7 +252,7 @@ async function checkInNow(force = false) {
 
   let session = await readSession();
   if (!session) {
-    await saveStatus({ ok: false, reason: 'not_logged_in', today });
+    await saveStatus({ ok: false, reason: 'not_logged_in', today, diag: lastDiag });
     await notifyOnce('fail', 'Anikura CN 签到未完成', '未检测到登录状态，请先打开 anikura.cn 登录一次');
     return { ok: false, reason: 'not_logged_in', today };
   }
@@ -240,6 +326,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'set-settings') {
     const next = { notifyEnabled: !!msg.notifyEnabled };
     storageSet({ [SETTINGS_KEY]: next }).then(() => sendResponse({ ok: true, settings: next }));
+    return true;
+  }
+  if (msg && msg.type === 'run-diag') {
+    collectSessionData().then((r) =>
+      sendResponse({ ok: true, hasSession: !!r.session, diag: r.diag })
+    );
     return true;
   }
 });

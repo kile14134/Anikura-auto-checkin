@@ -1,6 +1,8 @@
 const statusEl = document.getElementById('status');
 const lastEl = document.getElementById('last');
 const notifyToggle = document.getElementById('notify-toggle');
+const diagBtn = document.getElementById('diag');
+const diagOut = document.getElementById('diag-out');
 
 chrome.runtime.sendMessage({ type: 'get-settings' }, (resp) => {
   if (resp && resp.ok && resp.settings) {
@@ -12,6 +14,29 @@ notifyToggle.addEventListener('change', () => {
   chrome.runtime.sendMessage({
     type: 'set-settings',
     notifyEnabled: notifyToggle.checked,
+  });
+});
+
+diagBtn.addEventListener('click', () => {
+  diagBtn.disabled = true;
+  diagOut.style.display = 'block';
+  diagOut.textContent = '诊断中…（请确保已登录并打开 anikura.cn 页面）';
+  chrome.runtime.sendMessage({ type: 'run-diag' }, (resp) => {
+    diagBtn.disabled = false;
+    if (!resp || !resp.ok) {
+      diagOut.textContent = '诊断失败：' + ((resp && resp.error) || '未知原因');
+      return;
+    }
+    const d = resp.diag || {};
+    const lines = [];
+    lines.push('后台 chrome.cookies 找到 ' + (d.cookieNames || []).length + ' 个 sb-* 登录 cookie：');
+    lines.push((d.cookieNames || []).join('、') || '（无）');
+    lines.push('页面上下文 localStorage 键：' + ((d.lsKeys || []).join('、') || '（无）'));
+    lines.push('页面 document.cookie 中的登录 cookie：' + ((d.pageCookies || []).join('、') || '（无）'));
+    if (d.parseError) lines.push('cookie 解析错误：' + d.parseError);
+    if (d.contentScriptError) lines.push('页面读取错误：' + d.contentScriptError);
+    lines.push(resp.hasSession ? '✅ 已找到可用登录态' : '❌ 未找到可用登录态');
+    diagOut.textContent = lines.join('\n');
   });
 });
 

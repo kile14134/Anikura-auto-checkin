@@ -46,7 +46,7 @@
   }
 
   // 从 cookie 中读取 Supabase session，返回 access_token
-  function readAccessToken() {
+  function tokenFromCookies() {
     const cookies = document.cookie
       .split(';')
       .map((part) => {
@@ -78,6 +78,26 @@
       console.warn('[Anikura Auto Check-in] 解析登录态失败', e);
       return null;
     }
+  }
+
+  // 登录态优先读 cookie；读不到时再试 localStorage（部分情况下站点可能把 session 存在这里）
+  function readAccessToken() {
+    const fromCookie = tokenFromCookies();
+    if (fromCookie) return fromCookie;
+    try {
+      const lsKeys = Object.keys(localStorage).filter(
+        (k) => k.startsWith('sb-') && k.includes('auth-token') && !k.includes('code-verifier')
+      );
+      for (const k of lsKeys) {
+        const session = JSON.parse(
+          base64UrlDecode(String(localStorage.getItem(k)).replace(/^base64-/, ''))
+        );
+        if (session && typeof session.access_token === 'string') return session.access_token;
+      }
+    } catch (e) {
+      console.warn('[Anikura Auto Check-in] 读取 localStorage 登录态失败', e);
+    }
+    return null;
   }
 
   // 等待页面自身的 supabase 客户端完成初始化/刷新 token
@@ -170,7 +190,7 @@
 
       let token = await waitForToken();
       if (!token) {
-        showToast('未检测到登录状态：请先在 anikura.cn 登录一次，之后即可自动签到', 'warn');
+        showToast('未检测到登录状态：请先登录 anikura.cn。若已登录仍提示，登录 cookie 可能被设为 HttpOnly，建议改用 Chrome 插件版', 'warn');
         return;
       }
 

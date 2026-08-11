@@ -48,6 +48,14 @@
       background: #e5e7eb;
       color: #1f2937;
     }
+    button.link {
+      background: none;
+      color: #7c3aed;
+      padding: 4px 0;
+      margin-bottom: 4px;
+      font-size: 12px;
+      text-align: left;
+    }
     label.toggle {
       display: flex;
       align-items: center;
@@ -64,6 +72,8 @@
   <p id="status">读取状态中…</p>
   <p id="last"></p>
   <label class="toggle"><input type="checkbox" id="notify-toggle" /> 启用签到结果通知</label>
+  <button id="diag" class="link">诊断登录态</button>
+  <pre id="diag-out" style="display:none;margin:0 0 10px;padding:8px;background:#f9fafb;border-radius:8px;font-size:11px;white-space:pre-wrap;word-break:break-all;color:#4b5563;"></pre>
   <button id="checkin">立即签到</button>
   <button id="open" class="secondary">打开签到页</button>
   <script src="popup.js"></script>
