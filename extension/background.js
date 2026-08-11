@@ -260,7 +260,7 @@ async function callCheckIn(accessToken) {
       apikey: ANON_KEY,
       Authorization: 'Bearer ' + accessToken,
       'Content-Type': 'application/json',
-      'X-Client-Info': 'anikura-auto-checkin/1.0.0',
+      'X-Client-Info': 'anikura-auto-checkin/1.3.0',
     },
     body: '{}',
   });

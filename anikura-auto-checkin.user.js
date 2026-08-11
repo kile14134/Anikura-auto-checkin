@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anikura CN 自动签到
 // @namespace    anikura-auto-checkin
-// @version      1.0.0
+// @version      1.1.0
 // @description  anikura.cn 每日自动签到：打开网站任意页面时自动调用网站自身的签到接口，并提示签到结果。
 // @match        https://www.anikura.cn/*
 // @run-at       document-idle
@@ -119,7 +119,7 @@
         apikey: ANON_KEY,
         Authorization: 'Bearer ' + accessToken,
         'Content-Type': 'application/json',
-        'X-Client-Info': 'anikura-auto-checkin/1.0.0',
+        'X-Client-Info': 'anikura-auto-checkin/1.3.0',
       },
       body: '{}',
     });
