@@ -29,8 +29,11 @@ diagBtn.addEventListener('click', () => {
     }
     const d = resp.diag || {};
     const lines = [];
-    lines.push('后台 chrome.cookies 找到 ' + (d.cookieNames || []).length + ' 个 sb-* 登录 cookie：');
-    lines.push((d.cookieNames || []).join('、') || '（无）');
+    const probes = d.cookieProbes || [];
+    lines.push('chrome.cookies 探测结果（计数=该查询返回的 cookie 总数，sb=其中 sb-* 登录 cookie 数）：');
+    for (const p of probes) {
+      lines.push(p.label + '：计数 ' + p.count + '，sb ' + p.sb + (p.error ? '，错误：' + p.error : ''));
+    }
     lines.push('页面上下文 localStorage 键：' + ((d.lsKeys || []).join('、') || '（无）'));
     lines.push('页面 document.cookie 中的登录 cookie：' + ((d.pageCookies || []).join('、') || '（无）'));
     if (d.parseError) lines.push('cookie 解析错误：' + d.parseError);

@@ -28,13 +28,22 @@ function storageSet(obj) {
 
 function getAllCookies(details) {
   return new Promise((resolve) => {
-    chrome.cookies.getAll(details, (cookies) => {
-      if (chrome.runtime.lastError) {
-        resolve([]);
-        return;
+    let settled = false;
+    const finish = (cookies, err) => {
+      if (settled) return;
+      settled = true;
+      resolve({ cookies: cookies || [], error: err ? String((err && err.message) || err) : null });
+    };
+    try {
+      const maybe = chrome.cookies.getAll(details, (cookies) => {
+        finish(cookies, chrome.runtime.lastError);
+      });
+      if (maybe && typeof maybe.then === 'function') {
+        maybe.then((c) => finish(c, null)).catch((e) => finish([], e));
       }
-      resolve(cookies || []);
-    });
+    } catch (e) {
+      finish([], e);
+    }
   });
 }
 
@@ -122,18 +131,43 @@ function askContentScript() {
 }
 
 async function collectSessionData() {
-  const diag = { cookieNames: [], lsKeys: [], pageCookies: [], parseError: null };
+  const diag = { cookieProbes: [], lsKeys: [], pageCookies: [], parseError: null };
   let session = null;
 
-  // 1) chrome.cookies：能读到 HttpOnly，覆盖 www 与裸域名
-  const allCookies = [];
-  for (const url of [SITE_URL, 'https://anikura.cn/']) {
-    allCookies.push(...(await getAllCookies({ url })));
+  // 1) chrome.cookies 多种查询方式探测：定位为什么常规查询读不到登录 cookie
+  const isSbAuth = (c) =>
+    c.name.startsWith('sb-') && c.name.includes('auth-token') && !c.name.includes('code-verifier');
+  const collected = [];
+  const runProbe = async (label, details) => {
+    const r = await getAllCookies(details);
+    const sb = r.cookies.filter(isSbAuth);
+    diag.cookieProbes.push({
+      label,
+      count: r.cookies.length,
+      sb: sb.length,
+      error: r.error,
+    });
+    if (sb.length) collected.push(...sb);
+  };
+  await runProbe('url www', { url: SITE_URL });
+  await runProbe('url 裸域', { url: 'https://anikura.cn/' });
+  await runProbe('url www/checkin', { url: 'https://www.anikura.cn/checkin' });
+  await runProbe('全部可读', {});
+  await runProbe('按域名 anikura.cn', { domain: 'anikura.cn' });
+  await runProbe('分区 www', { url: SITE_URL, partitionKey: { topLevelSite: 'https://www.anikura.cn' } });
+  await runProbe('分区 裸域', { url: SITE_URL, partitionKey: { topLevelSite: 'https://anikura.cn' } });
+
+  // 去重后统一解析
+  const seen = new Set();
+  const uniqueCookies = [];
+  for (const c of collected) {
+    const key = c.name + '|' + c.value;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueCookies.push(c);
+    }
   }
-  diag.cookieNames = allCookies
-    .filter((c) => c.name.startsWith('sb-') && c.name.includes('auth-token') && !c.name.includes('code-verifier'))
-    .map((c) => c.name + (c.httpOnly ? ' (HttpOnly)' : ''));
-  const fromCookie = sessionFromCookies(allCookies);
+  const fromCookie = sessionFromCookies(uniqueCookies);
   diag.parseError = fromCookie.parseError || null;
   if (fromCookie.session) session = fromCookie.session;
 
